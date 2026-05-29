@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Kanban de Prospecção — Academias & CrossFit (Supabase)</title>
+<title>Kanban de Prospecção — Academias & CrossFit</title>
 <style>
   :root {
     --bg:#0f1115; --panel:#171a21; --panel-2:#1f232c; --border:#2a2f3a;
@@ -21,7 +21,7 @@
   button { background:var(--panel-2); color:var(--text); border:1px solid var(--border);
     padding:8px 13px; border-radius:8px; cursor:pointer; font-size:13px; transition:.15s; }
   button:hover { border-color:var(--accent-2); }
-  button.primary { background:var(--accent-2); border-color:var(--accent-2); color:#fff; }
+  button.primary { background:var(--accent-2); border-color:var(--accent-2); color:#fff; width:100%; padding:11px; font-size:14px; }
   input,select { background:var(--panel-2); border:1px solid var(--border); border-radius:8px;
     padding:8px 11px; color:var(--text); font-size:13px; }
   .search { width:200px; }
@@ -48,19 +48,39 @@
   .tag.nova { background:#1f3a26; color:#6fe89a; }
   .tag.wa { background:#143; color:#6fe89a; }
   .card .actions { margin-top:8px; display:flex; gap:6px; }
-  .card .actions a,.card .actions button { flex:1; text-align:center; text-decoration:none;
-    font-size:11px; padding:6px 0; border-radius:6px; }
+  .card .actions a { flex:1; text-align:center; text-decoration:none; font-size:11px; padding:6px 0; border-radius:6px; }
   .wa { background:var(--accent); color:#04210f; font-weight:600; }
   .wa.off { background:#333; color:#777; pointer-events:none; }
   .empty { color:var(--muted); font-size:12px; text-align:center; padding:20px; opacity:.6; }
-  .loader { position:fixed; inset:0; background:rgba(15,17,21,.9); display:flex; align-items:center;
-    justify-content:center; z-index:99; font-size:15px; color:var(--muted); }
-  .loader.hide { display:none; }
+
+  /* Login / loader */
+  .gate { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center;
+    justify-content:center; z-index:99; }
+  .gate.hide { display:none; }
+  .login-box { background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:30px; width:340px; max-width:90vw; }
+  .login-box h2 { margin:0 0 4px; font-size:18px; }
+  .login-box p { margin:0 0 20px; font-size:12px; color:var(--muted); }
+  .login-box .field { margin-bottom:12px; }
+  .login-box .field input { width:100%; }
+  .login-err { color:var(--danger); font-size:12px; margin-top:10px; min-height:16px; }
 </style>
 </head>
 <body>
-<div class="loader" id="loader">⏳ Carregando leads do Supabase...</div>
-<header>
+
+<!-- LOGIN GATE -->
+<div class="gate" id="gate">
+  <div class="login-box">
+    <h2>🎯 Prospecção</h2>
+    <p>Academias · CrossFit · Personal — acesso restrito</p>
+    <div class="field"><input id="email" type="email" placeholder="email" autocomplete="username" /></div>
+    <div class="field"><input id="password" type="password" placeholder="senha" autocomplete="current-password" /></div>
+    <button class="primary" onclick="doLogin()">Entrar</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<header style="display:none" id="appHeader">
   <h1>🎯 Prospecção <span>· Academias / CrossFit / Personal</span></h1>
   <input class="search" id="search" placeholder="🔎 Buscar nome / CNPJ..." />
   <select id="cityFilter"><option value="">Todas as cidades</option></select>
@@ -72,14 +92,15 @@
     <span class="stats" id="stats">0 leads</span>
     <span id="status-bar"></span>
     <button onclick="loadLeads()">🔄 Recarregar</button>
+    <button onclick="logout()">Sair</button>
   </div>
 </header>
-<div class="board" id="board"></div>
+<div class="board" id="board" style="display:none"></div>
 
 <script>
 const SUPA_URL = 'https://amsdxyoeeqszlnbozixo.supabase.co';
 const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtc2R4eW9lZXFzemxuYm96aXhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMjczMjksImV4cCI6MjA5NTYwMzMyOX0.aQevEeRViJtqjD33Twgei5G2Maqg5wbhC7t8lWy3Gfg';
-const H = { 'apikey': ANON, 'Authorization': 'Bearer ' + ANON, 'Content-Type': 'application/json' };
+const SESSION_KEY = 'prosp_session';
 
 const COLUMNS = [
   { id:'novo', title:'Novo Lead', color:'#4f8cff' },
@@ -91,127 +112,152 @@ const COLUMNS = [
 ];
 const WA_MSG = encodeURIComponent('Olá! Tudo bem? Falo da [SUA EMPRESA] — trabalhamos com IA e automação para academias e boxes. Posso te mostrar como atrair mais alunos com pouco esforço?');
 
-let leads = [];
-let filter = '', cityF = '', waF = '';
+let leads = [], filter = '', cityF = '', waF = '';
+let session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
 
-async function loadLeads() {
+function authHeaders() {
+  return { 'apikey': ANON, 'Authorization': 'Bearer ' + (session ? session.access_token : ANON), 'Content-Type': 'application/json' };
+}
+
+async function doLogin() {
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const err = document.getElementById('loginErr');
+  err.textContent = 'entrando...';
+  try {
+    const res = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, {
+      method:'POST', headers:{ 'apikey': ANON, 'Content-Type':'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'login inválido');
+    session = data;
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    err.textContent = '';
+    enterApp();
+  } catch(e) { err.textContent = '❌ ' + e.message; }
+}
+
+async function refreshSession() {
+  if (!session || !session.refresh_token) return false;
+  try {
+    const res = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method:'POST', headers:{ 'apikey': ANON, 'Content-Type':'application/json' },
+      body: JSON.stringify({ refresh_token: session.refresh_token })
+    });
+    if (!res.ok) return false;
+    session = await res.json();
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    return true;
+  } catch { return false; }
+}
+
+function logout() {
+  session = null; localStorage.removeItem(SESSION_KEY);
+  document.getElementById('gate').classList.remove('hide');
+  document.getElementById('appHeader').style.display = 'none';
+  document.getElementById('board').style.display = 'none';
+}
+
+function enterApp() {
+  document.getElementById('gate').classList.add('hide');
+  document.getElementById('appHeader').style.display = 'flex';
+  document.getElementById('board').style.display = 'flex';
+  loadLeads();
+}
+
+function setStatus(t){ document.getElementById('status-bar').textContent = t; }
+
+async function loadLeads(retry=true) {
   setStatus('carregando...');
   try {
-    const res = await fetch(`${SUPA_URL}/rest/v1/leads?select=*&order=municipio.asc&limit=10000`, { headers: H });
-    if (!res.ok) throw new Error('HTTP ' + res.status + ' — ' + await res.text());
+    const res = await fetch(`${SUPA_URL}/rest/v1/leads?select=*&order=municipio.asc&limit=10000`, { headers: authHeaders() });
+    if (res.status === 401 && retry) { if (await refreshSession()) return loadLeads(false); logout(); return; }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     leads = await res.json();
-    buildCityFilter();
-    render();
-    setStatus('');
-    document.getElementById('loader').classList.add('hide');
-  } catch (e) {
-    document.getElementById('loader').textContent = '❌ Erro: ' + e.message;
-    setStatus('erro ao carregar');
-  }
+    buildCityFilter(); render(); setStatus('');
+  } catch(e) { setStatus('erro: ' + e.message); }
 }
-function setStatus(t) { document.getElementById('status-bar').textContent = t; }
 
 function buildCityFilter() {
   const cities = [...new Set(leads.map(l => l.municipio).filter(Boolean))].sort();
   const sel = document.getElementById('cityFilter');
-  sel.innerHTML = '<option value="">Todas as cidades (' + leads.length + ')</option>' +
-    cities.map(c => {
-      const n = leads.filter(l => l.municipio === c).length;
-      return `<option value="${esc(c)}">${esc(c)} (${n})</option>`;
-    }).join('');
+  sel.innerHTML = '<option value="">Todas as cidades ('+leads.length+')</option>' +
+    cities.map(c => `<option value="${esc(c)}">${esc(c)} (${leads.filter(l=>l.municipio===c).length})</option>`).join('');
   sel.value = cityF;
 }
 
-function waDigits(l) {
-  let d = (l.whatsapp || l.telefone || '').replace(/\D/g,'');
-  if (d && !d.startsWith('55') && d.length >= 10) d = '55' + d;
-  return d.length >= 12 ? d : null;
-}
-function isMobile(l) {
-  const d = (l.whatsapp || l.telefone || '').replace(/\D/g,'');
-  const local = d.startsWith('55') ? d.slice(4) : d.slice(2);
-  return local.length === 9 || (local.length >= 8 && local[0] === '9');
-}
+function waDigits(l){ let d=(l.whatsapp||l.telefone||'').replace(/\D/g,''); if(d&&!d.startsWith('55')&&d.length>=10)d='55'+d; return d.length>=12?d:null; }
+function isMobile(l){ const d=(l.whatsapp||l.telefone||'').replace(/\D/g,''); const lo=d.startsWith('55')?d.slice(4):d.slice(2); return lo.length===9||(lo.length>=8&&lo[0]==='9'); }
 
 function render() {
-  const board = document.getElementById('board');
-  board.innerHTML = '';
-  const f = filter.toLowerCase();
-  let shown = 0;
+  const board = document.getElementById('board'); board.innerHTML='';
+  const f = filter.toLowerCase(); let shown=0;
   COLUMNS.forEach(col => {
-    let items = leads.filter(l => l.status === col.id);
-    items = items.filter(l =>
-      (!f || (l.nome_fantasia||'').toLowerCase().includes(f) || (l.cnpj||'').includes(f)) &&
-      (!cityF || l.municipio === cityF) &&
-      (!waF || waDigits(l)));
+    let items = leads.filter(l => l.status===col.id)
+      .filter(l => (!f || (l.nome_fantasia||'').toLowerCase().includes(f) || (l.cnpj||'').includes(f))
+        && (!cityF || l.municipio===cityF) && (!waF || waDigits(l)));
     shown += items.length;
     const colEl = document.createElement('div');
-    colEl.className = 'column'; colEl.dataset.col = col.id;
+    colEl.className='column'; colEl.dataset.col=col.id;
     colEl.innerHTML = `<div class="col-head"><span><span class="dot" style="background:${col.color}"></span>${col.title}</span><span class="count">${items.length}</span></div><div class="cards"></div>`;
     const cardsEl = colEl.querySelector('.cards');
-    if (!items.length) cardsEl.innerHTML = '<div class="empty">vazio</div>';
-    items.slice(0, 400).forEach(l => cardsEl.appendChild(cardEl(l)));
-    if (items.length > 400) cardsEl.insertAdjacentHTML('beforeend', `<div class="empty">+${items.length-400} (use filtros)</div>`);
-    colEl.addEventListener('dragover', e => { e.preventDefault(); colEl.classList.add('dragover'); });
-    colEl.addEventListener('dragleave', () => colEl.classList.remove('dragover'));
-    colEl.addEventListener('drop', e => {
-      e.preventDefault(); colEl.classList.remove('dragover');
-      const id = e.dataTransfer.getData('id');
-      moveLead(id, col.id);
-    });
+    if(!items.length) cardsEl.innerHTML='<div class="empty">vazio</div>';
+    items.slice(0,400).forEach(l => cardsEl.appendChild(cardEl(l)));
+    if(items.length>400) cardsEl.insertAdjacentHTML('beforeend', `<div class="empty">+${items.length-400} (use filtros)</div>`);
+    colEl.addEventListener('dragover', e=>{e.preventDefault();colEl.classList.add('dragover');});
+    colEl.addEventListener('dragleave', ()=>colEl.classList.remove('dragover'));
+    colEl.addEventListener('drop', e=>{e.preventDefault();colEl.classList.remove('dragover');moveLead(e.dataTransfer.getData('id'),col.id);});
     board.appendChild(colEl);
   });
   document.getElementById('stats').textContent = `${shown} / ${leads.length} leads`;
 }
 
 function cardEl(l) {
-  const el = document.createElement('div');
-  el.className = 'card'; el.draggable = true;
-  const wa = waDigits(l);
-  const link = wa ? `https://wa.me/${wa}?text=${WA_MSG}` : null;
-  const isNew = l.data_abertura && isRecent(l.data_abertura);
+  const el=document.createElement('div'); el.className='card'; el.draggable=true;
+  const wa=waDigits(l); const link=wa?`https://wa.me/${wa}?text=${WA_MSG}`:null;
+  const isNew=l.data_abertura && isRecent(l.data_abertura);
   el.innerHTML = `
-    <div class="name">${esc(l.nome_fantasia || l.razao_social || 'Sem nome')}</div>
+    <div class="name">${esc(l.nome_fantasia||l.razao_social||'Sem nome')}</div>
     <div class="meta">
-      ${l.municipio ? '📍 '+esc(l.municipio)+(l.uf?'/'+esc(l.uf):'')+'<br>' : ''}
-      ${l.telefone ? '📞 '+esc(l.telefone)+'<br>' : '<span style="color:#ff5c5c">sem telefone</span><br>'}
-      ${l.cnpj ? '🏢 '+esc(l.cnpj) : ''}
+      ${l.municipio?'📍 '+esc(l.municipio)+(l.uf?'/'+esc(l.uf):'')+'<br>':''}
+      ${l.telefone?'📞 '+esc(l.telefone)+'<br>':'<span style="color:#ff5c5c">sem telefone</span><br>'}
+      ${l.cnpj?'🏢 '+esc(l.cnpj):''}
     </div>
     <div class="tags">
-      ${wa && isMobile(l) ? '<span class="tag wa">📱 WhatsApp</span>' : ''}
-      ${isNew ? '<span class="tag nova">🆕 recente</span>' : ''}
-      ${l.email ? '<span class="tag">✉️ email</span>' : ''}
+      ${wa&&isMobile(l)?'<span class="tag wa">📱 WhatsApp</span>':''}
+      ${isNew?'<span class="tag nova">🆕 recente</span>':''}
+      ${l.email?'<span class="tag">✉️ email</span>':''}
     </div>
-    <div class="actions">
-      <a class="wa ${link?'':'off'}" href="${link||'#'}" target="_blank">💬 WhatsApp</a>
-    </div>`;
-  el.addEventListener('dragstart', e => { e.dataTransfer.setData('id', l.id); el.classList.add('dragging'); });
-  el.addEventListener('dragend', () => el.classList.remove('dragging'));
+    <div class="actions"><a class="wa ${link?'':'off'}" href="${link||'#'}" target="_blank">💬 WhatsApp</a></div>`;
+  el.addEventListener('dragstart', e=>{e.dataTransfer.setData('id',l.id);el.classList.add('dragging');});
+  el.addEventListener('dragend', ()=>el.classList.remove('dragging'));
   return el;
 }
 
-async function moveLead(id, status) {
-  const lead = leads.find(x => x.id === id); if (!lead) return;
-  const prev = lead.status; lead.status = status; render();
+async function moveLead(id, status, retry=true) {
+  const lead = leads.find(x=>x.id===id); if(!lead) return;
+  const prev = lead.status; lead.status=status; render();
   try {
     const res = await fetch(`${SUPA_URL}/rest/v1/leads?id=eq.${id}`, {
-      method:'PATCH', headers:{...H, 'Prefer':'return=minimal'},
-      body: JSON.stringify({ status, updated_at: new Date().toISOString() })
-    });
-    if (!res.ok) throw new Error(await res.text());
-    setStatus('✓ salvo'); setTimeout(()=>setStatus(''), 1200);
-  } catch(e) { lead.status = prev; render(); setStatus('❌ falha ao salvar'); }
+      method:'PATCH', headers:{...authHeaders(),'Prefer':'return=minimal'},
+      body: JSON.stringify({ status, updated_at: new Date().toISOString() }) });
+    if (res.status===401 && retry) { if(await refreshSession()) return moveLead(id,status,false); }
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    setStatus('✓ salvo'); setTimeout(()=>setStatus(''),1200);
+  } catch(e){ lead.status=prev; render(); setStatus('❌ falha ao salvar'); }
 }
 
-function isRecent(d) { const dt=new Date(d); if(isNaN(dt))return false;
-  return (Date.now()-dt.getTime())/(1000*60*60*24*30) <= 12; }
+function isRecent(d){ const dt=new Date(d); if(isNaN(dt))return false; return (Date.now()-dt.getTime())/(1000*60*60*24*30)<=12; }
 function esc(s){ return (s+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-document.getElementById('search').addEventListener('input', e=>{ filter=e.target.value; render(); });
-document.getElementById('cityFilter').addEventListener('change', e=>{ cityF=e.target.value; render(); });
-document.getElementById('waFilter').addEventListener('change', e=>{ waF=e.target.value; render(); });
+document.getElementById('search').addEventListener('input', e=>{filter=e.target.value;render();});
+document.getElementById('cityFilter').addEventListener('change', e=>{cityF=e.target.value;render();});
+document.getElementById('waFilter').addEventListener('change', e=>{waF=e.target.value;render();});
+document.getElementById('password').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
 
-loadLeads();
+// Auto-login se já tem sessão válida
+if (session && session.access_token) enterApp();
 </script>
 </body>
 </html>
