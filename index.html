@@ -67,6 +67,38 @@
   .login-box .field { margin-bottom:12px; }
   .login-box .field input { width:100%; }
   .login-err { color:var(--danger); font-size:12px; margin-top:10px; min-height:16px; }
+  /* tabs */
+  .tabs { display:flex; gap:6px; }
+  .tab { background:var(--panel-2); border:1px solid var(--border); color:var(--muted);
+    padding:8px 16px; border-radius:8px; cursor:pointer; font-size:13px; }
+  .tab.active { background:var(--accent-2); border-color:var(--accent-2); color:#fff; font-weight:600; }
+  /* disparos view */
+  #disparosView { padding:18px; max-width:1100px; margin:0 auto; }
+  .dgrid { display:grid; grid-template-columns:330px 1fr; gap:16px; }
+  .dcard { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:14px; }
+  .dcard h3 { margin:0 0 12px; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+  .dcard label { display:block; font-size:12px; color:var(--muted); margin:10px 0 5px; }
+  .dcard select, .dcard input { width:100%; background:var(--panel-2); border:1px solid var(--border);
+    border-radius:8px; padding:9px 11px; color:var(--text); font-size:13px; }
+  .drow { display:flex; gap:10px; } .drow>div { flex:1; }
+  .dbtns { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:14px; }
+  .dbtns button { border:none; border-radius:9px; padding:11px; font-size:13px; font-weight:600; cursor:pointer; color:#fff; }
+  .b-start { background:var(--accent); color:#04210f; grid-column:1/3; }
+  .b-pause { background:var(--warn); color:#3a2600; } .b-resume { background:var(--accent-2); } .b-stop { background:var(--danger); grid-column:1/3; }
+  .dbtns button:disabled { opacity:.4; cursor:not-allowed; }
+  .bigstate { font-size:13px; font-weight:700; padding:5px 12px; border-radius:20px; display:inline-block; }
+  .s-idle{background:#2a3140;color:var(--muted)} .s-requested{background:#16324a;color:#8fd0ff}
+  .s-running{background:#143;color:#6fe89a} .s-paused{background:#3a2e12;color:var(--warn)}
+  .s-done{background:#16324a;color:#8fd0ff} .s-stopped{background:#3a1717;color:#ff9a9a}
+  .dprog { height:22px; background:var(--panel-2); border-radius:12px; overflow:hidden; margin:14px 0; }
+  .dbar { height:100%; background:linear-gradient(90deg,#25d366,#4f8cff); width:0; transition:width .4s;
+    display:flex; align-items:center; justify-content:center; font-size:11px; color:#04210f; font-weight:700; }
+  .dcounts { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; text-align:center; }
+  .dcounts div { background:var(--panel-2); border-radius:8px; padding:9px; }
+  .dcounts .n { font-size:20px; font-weight:700; } .dcounts .l { font-size:10px; color:var(--muted); }
+  .dlog { background:#0a0c10; border:1px solid var(--border); border-radius:8px; padding:10px; height:260px;
+    overflow-y:auto; font-family:ui-monospace,monospace; font-size:11px; line-height:1.6; color:#9fb0c0; white-space:pre-wrap; }
+  .dwarn { font-size:11px; color:var(--muted); margin-top:8px; line-height:1.5; }
 </style>
 </head>
 <body>
@@ -84,21 +116,76 @@
 </div>
 
 <header style="display:none" id="appHeader">
-  <h1>🎯 Prospecção <span>· Academias / CrossFit / Personal</span></h1>
-  <input class="search" id="search" placeholder="🔎 Buscar nome / CNPJ..." />
-  <select id="cityFilter"><option value="">Todas as cidades</option></select>
-  <select id="waFilter">
-    <option value="">Todos</option>
-    <option value="1">Só com WhatsApp</option>
-  </select>
-  <div class="toolbar">
+  <h1>🎯 PAM-GEH</h1>
+  <div class="tabs">
+    <button class="tab active" id="tabFunil" onclick="switchTab('funil')">📋 Funil</button>
+    <button class="tab" id="tabDisparos" onclick="switchTab('disparos')">🎛️ Disparos</button>
+  </div>
+  <span id="funilCtl" style="display:flex; gap:10px; align-items:center; margin-left:auto;">
+    <input class="search" id="search" placeholder="🔎 Buscar nome / CNPJ..." />
+    <select id="cityFilter"><option value="">Todas as cidades</option></select>
+    <select id="waFilter"><option value="">Todos</option><option value="1">Só com WhatsApp</option></select>
     <span class="stats" id="stats">0 leads</span>
     <span id="status-bar"></span>
-    <button onclick="loadLeads()">🔄 Recarregar</button>
-    <button onclick="logout()">Sair</button>
-  </div>
+    <button onclick="loadLeads()">🔄</button>
+  </span>
+  <button onclick="logout()" style="margin-left:10px">Sair</button>
 </header>
 <div class="board" id="board" style="display:none"></div>
+
+<!-- ABA DISPAROS -->
+<div id="disparosView">
+  <div class="dgrid">
+    <div>
+      <div class="dcard">
+        <h3>Segmentar disparo</h3>
+        <label>Canal</label>
+        <select id="dChannel" onchange="dChannelChange()">
+          <option value="whatsapp">📲 WhatsApp (Evolution)</option>
+          <option value="email">📧 Email (Resend)</option>
+        </select>
+        <label>Cidade</label>
+        <select id="dCity"></select>
+        <label>Origem (status)</label>
+        <select id="dStatus"><option value="novo">novo</option><option value="contatado">contatado</option></select>
+        <label>Quantidade (máx neste disparo)</label>
+        <input id="dLimit" type="number" value="100" min="1" />
+        <div class="drow">
+          <div><label>Delay mín (s)</label><input id="dMin" type="number" value="50" /></div>
+          <div><label>Delay máx (s)</label><input id="dMax" type="number" value="80" /></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;cursor:pointer">
+          <input id="dDry" type="checkbox" style="width:auto" /> Modo teste (simula, não envia)
+        </label>
+        <div class="dbtns">
+          <button class="b-start" id="dStart" onclick="dispStart()">▶ Iniciar disparo</button>
+          <button class="b-pause" id="dPause" onclick="dispControl('pause')" disabled>⏸ Pausar</button>
+          <button class="b-resume" id="dResume" onclick="dispControl('resume')" disabled>▶ Retomar</button>
+          <button class="b-stop" id="dStop" onclick="dispControl('stop')" disabled>⏹ Parar</button>
+        </div>
+        <div class="dwarn" id="dHint">WhatsApp: delay 50–80s (anti-ban). Irati fica excluída por padrão.</div>
+      </div>
+    </div>
+    <div>
+      <div class="dcard">
+        <h3>Status do disparo</h3>
+        <span id="dState" class="bigstate s-idle">sem campanha</span>
+        <span id="dEta" style="margin-left:10px;font-size:12px;color:var(--muted)"></span>
+        <div class="dprog"><div class="dbar" id="dBar">0%</div></div>
+        <div class="dcounts">
+          <div><div class="n" id="dcSent">0</div><div class="l">enviados</div></div>
+          <div><div class="n" id="dcTotal">0</div><div class="l">total</div></div>
+          <div><div class="n" id="dcFail" style="color:var(--danger)">0</div><div class="l">falhas</div></div>
+          <div><div class="n" id="dcSkip">0</div><div class="l">pulados</div></div>
+        </div>
+        <div id="dCur" style="font-size:13px;color:var(--warn);margin-top:10px"></div>
+      </div>
+      <div class="dcard"><h3>Log ao vivo</h3><div class="dlog" id="dLog">Aguardando início...</div>
+        <div class="dwarn">⚠️ O worker precisa estar rodando (<code>python3 worker.py</code>) pra executar os envios. O app comanda; o worker dispara.</div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 const SUPA_URL = 'https://amsdxyoeeqszlnbozixo.supabase.co';
@@ -282,6 +369,114 @@ async function moveLead(id, status, retry=true) {
 
 function isRecent(d){ const dt=new Date(d); if(isNaN(dt))return false; return (Date.now()-dt.getTime())/(1000*60*60*24*30)<=12; }
 function esc(s){ return (s+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ───── ABA DISPAROS ─────
+const EXCLUDE = ['IRATI'];  // nunca prospectar estas cidades
+let dCampaignId = null;
+
+function switchTab(t){
+  const funil = t==='funil';
+  document.getElementById('board').style.display = funil ? 'flex' : 'none';
+  document.getElementById('disparosView').style.display = funil ? 'none' : 'block';
+  document.getElementById('funilCtl').style.display = funil ? 'flex' : 'none';
+  document.getElementById('tabFunil').classList.toggle('active', funil);
+  document.getElementById('tabDisparos').classList.toggle('active', !funil);
+  if(!funil) dispLoadCities();
+}
+
+function dChannelChange(){
+  const email = document.getElementById('dChannel').value==='email';
+  document.getElementById('dMin').value = email?8:50;
+  document.getElementById('dMax').value = email?20:80;
+  document.getElementById('dHint').textContent = email
+    ? 'Email: delay 8–20s. Domínio novo? aqueça (20–50/dia). Irati excluída.'
+    : 'WhatsApp: delay 50–80s (anti-ban). Irati excluída por padrão.';
+  dispLoadCities();
+}
+
+function dispLoadCities(){
+  const ch = document.getElementById('dChannel').value;
+  const field = ch==='whatsapp' ? 'whatsapp' : 'email';
+  const counts = {};
+  let totalAll = 0;
+  leads.forEach(l=>{
+    if(!l.municipio || EXCLUDE.includes(l.municipio)) return;
+    if(!l[field]) return;
+    counts[l.municipio]=(counts[l.municipio]||0)+1; totalAll++;
+  });
+  const sel = document.getElementById('dCity');
+  const cur = sel.value;
+  const cities = Object.keys(counts).sort();
+  sel.innerHTML = `<option value="">Todas as cidades — exceto Irati (${totalAll})</option>` +
+    cities.map(c=>`<option value="${esc(c)}">${esc(c)} (${counts[c]})</option>`).join('');
+  sel.value = cur;
+}
+
+async function dispStart(){
+  const ch = document.getElementById('dChannel').value;
+  const city = document.getElementById('dCity').value;
+  const cfg = {
+    channel: ch,
+    city: city || null,
+    exclude_cities: city ? [] : EXCLUDE,
+    status_from: document.getElementById('dStatus').value,
+    lim: +document.getElementById('dLimit').value,
+    delay_min: +document.getElementById('dMin').value,
+    delay_max: +document.getElementById('dMax').value,
+    dry_run: document.getElementById('dDry').checked,
+    state: 'requested'
+  };
+  try{
+    const res = await fetch(`${SUPA_URL}/rest/v1/campaigns`, {
+      method:'POST', headers:{...authHeaders(), 'Prefer':'return=representation'},
+      body: JSON.stringify(cfg) });
+    if(!res.ok) throw new Error(await res.text());
+    const row = (await res.json())[0];
+    dCampaignId = row.id;
+    document.getElementById('dLog').textContent = '⏳ Campanha criada. Aguardando o worker pegar...';
+  }catch(e){ alert('Erro ao criar campanha: '+e.message); }
+}
+
+async function dispControl(action){
+  if(!dCampaignId) return;
+  await fetch(`${SUPA_URL}/rest/v1/campaigns?id=eq.${dCampaignId}`, {
+    method:'PATCH', headers:{...authHeaders(),'Prefer':'return=minimal'},
+    body: JSON.stringify({ command: action }) });
+}
+
+async function dispPoll(){
+  if(!session) return;
+  try{
+    // pega a campanha mais recente
+    const res = await fetch(`${SUPA_URL}/rest/v1/campaigns?select=*&order=created_at.desc&limit=1`, { headers: authHeaders() });
+    if(!res.ok) return;
+    const rows = await res.json();
+    if(!rows.length) return;
+    const c = rows[0];
+    if(!dCampaignId) dCampaignId = c.id;
+    const map={requested:['📨 na fila','s-requested'],running:['🟢 disparando','s-running'],
+      paused:['⏸ pausado','s-paused'],done:['✅ concluído','s-done'],stopped:['⏹ parado','s-stopped'],idle:['sem campanha','s-idle']};
+    const m = map[c.state]||map.idle;
+    const el=document.getElementById('dState'); el.textContent=m[0]; el.className='bigstate '+m[1];
+    document.getElementById('dEta').textContent = c.state==='running' ? (c.eta||'') : '';
+    document.getElementById('dcSent').textContent=c.sent||0;
+    document.getElementById('dcTotal').textContent=c.total||0;
+    document.getElementById('dcFail').textContent=c.failed||0;
+    document.getElementById('dcSkip').textContent=c.skipped||0;
+    const done=(c.sent||0)+(c.failed||0)+(c.skipped||0);
+    const pct=c.total?Math.round(done/c.total*100):0;
+    const bar=document.getElementById('dBar'); bar.style.width=pct+'%'; bar.textContent=pct+'%';
+    document.getElementById('dCur').textContent = c.current ? ('▶ '+c.current) : '';
+    if(c.log) document.getElementById('dLog').textContent = c.log;
+    const log=document.getElementById('dLog'); log.scrollTop=log.scrollHeight;
+    const run=c.state==='running', pau=c.state==='paused', active=run||pau||c.state==='requested';
+    document.getElementById('dStart').disabled=active;
+    document.getElementById('dPause').disabled=!run;
+    document.getElementById('dResume').disabled=!pau;
+    document.getElementById('dStop').disabled=!active;
+  }catch(e){}
+}
+setInterval(dispPoll, 2500);
 
 document.getElementById('search').addEventListener('input', e=>{filter=e.target.value;render();});
 document.getElementById('cityFilter').addEventListener('change', e=>{cityF=e.target.value;render();});
