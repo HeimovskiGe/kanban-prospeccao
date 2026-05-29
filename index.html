@@ -47,6 +47,9 @@
   .tag { font-size:10px; padding:2px 7px; border-radius:5px; background:#2a3140; color:var(--muted); }
   .tag.nova { background:#1f3a26; color:#6fe89a; }
   .tag.wa { background:#143; color:#6fe89a; }
+  .tag.ia { background:#3a2a14; color:#ffcf8f; font-weight:600; }
+  .reply { margin-top:7px; padding:6px 8px; background:#12161d; border-left:2px solid #4f8cff;
+    border-radius:4px; font-size:11px; color:#aab3c2; font-style:italic; }
   .card .actions { margin-top:8px; display:flex; gap:6px; }
   .card .actions a { flex:1; text-align:center; text-decoration:none; font-size:11px; padding:6px 0; border-radius:6px; }
   .wa { background:var(--accent); color:#04210f; font-weight:600; }
@@ -252,10 +255,12 @@ function cardEl(l) {
       ${l.cnpj?'🏢 '+esc(l.cnpj):''}
     </div>
     <div class="tags">
+      ${l.ia_tag?'<span class="tag ia">'+esc(l.ia_tag)+'</span>':''}
       ${wa&&isMobile(l)?'<span class="tag wa">📱 WhatsApp</span>':''}
       ${isNew?'<span class="tag nova">🆕 recente</span>':''}
       ${l.email?'<span class="tag">✉️ email</span>':''}
     </div>
+    ${l.last_reply?'<div class="reply">💬 "'+esc(l.last_reply.slice(0,120))+'"</div>':''}
     <div class="actions"><a class="wa ${link?'':'off'}" href="${link||'#'}" target="_blank">💬 WhatsApp</a></div>`;
   el.addEventListener('dragstart', e=>{e.dataTransfer.setData('id',l.id);el.classList.add('dragging');});
   el.addEventListener('dragend', ()=>el.classList.remove('dragging'));
