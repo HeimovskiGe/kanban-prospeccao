@@ -110,19 +110,35 @@ const COLUMNS = [
   { id:'fechado', title:'Fechado ✅', color:'#2ecc71' },
   { id:'perdido', title:'Perdido', color:'#ff5c5c' },
 ];
-// Mensagem PAM-GEH personalizada por lead (voz "diagnóstico", anti-hype)
+// Mensagem fixa de prospecção (texto exato definido por Gelson)
 function buildWaMsg(l) {
-  const nome = (l.nome_fantasia || l.razao_social || 'sua academia').trim();
-  const cidade = (l.municipio || '').trim();
-  const ondeVi = cidade ? ` aí em ${cidade}` : '';
   const msg =
-`Oi! Aqui é a Pamela, do PAM-GEH 👋 Vi a ${nome}${ondeVi}.
+`Olá sou Gelson! Tudo bem?
 
-Falo direto: a maioria das academias e estúdios perde aluno não por falta de contato, e sim por demora no WhatsApp — a pessoa pergunta valor, ninguém responde na hora, ela some.
+Vou ser direto pra não tomar seu tempo 👇
 
-A gente não vende "IA que fecha sozinha" (esse mercado tá cheio de promessa furada). A gente faz o diagnóstico do processo de vocês primeiro e só depois liga uma IA que filtra e responde na hora — pra sobrar pra vocês só o fechamento.
+A maioria das academias e estúdios não perde aluno por falta de contato.
 
-Vale 10 min pra eu te mostrar como ficaria na ${nome}? Hoje ou amanhã?`;
+Perde por *demora no WhatsApp.*
+
+A pessoa pergunta o valor e...
+• ninguém responde na hora
+• ou responde algo genérico, sem contexto
+• ou uma automação mal treinada espanta de vez
+
+Aí o futuro aluno *some* e vai matricular no concorrente que respondeu primeiro.
+
+A gente *não* vende aquela "IA que fecha venda sozinha" (esse mercado tá cheio de promessa furada).
+
+O que fazemos é o contrário:
+1️⃣ Primeiro o *diagnóstico* do processo de vocês
+2️⃣ Só depois ligamos a IA que filtra e responde na hora
+
+Resultado: sobra pra vocês só o que importa *o fechamento.*
+
+Vale 10 min pra eu te mostrar como isso ficaria aí na sua *realidade*?
+
+Você prefere hoje ou amanhã?`;
   return encodeURIComponent(msg);
 }
 
