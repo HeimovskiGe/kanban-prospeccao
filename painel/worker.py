@@ -141,7 +141,10 @@ def fetch_leads(c):
         q = f"{SUPABASE_URL}/rest/v1/leads?select={sel}&status=eq.{c['status_from']}&whatsapp=not.is.null"
     else:
         q = f"{SUPABASE_URL}/rest/v1/leads?select={sel}&email_status=eq.{c['status_from']}&email=not.is.null"
-    if c.get("city"):
+    if c.get("cities"):
+        vals = ",".join(f'"{x}"' for x in c["cities"])
+        q += f"&municipio=in.({vals})"
+    elif c.get("city"):
         q += f"&municipio=eq.{requests.utils.quote(c['city'])}"
     elif c.get("exclude_cities"):
         vals = ",".join(f'"{x}"' for x in c["exclude_cities"])
@@ -168,6 +171,7 @@ def run_campaign(c):
     patch_campaign(cid, {"state": "running", "total": total, "sent": 0, "failed": 0, "skipped": 0,
                          "log": addlog(f"📋 {total} leads no segmento ({c['channel']}{' · DRY-RUN' if dry else ''}). Iniciando...")})
     sent = failed = skipped = 0
+    seen = set()  # contatos já atingidos nesta campanha (evita 2x no mesmo número/email)
     dmin, dmax = c["delay_min"], c["delay_max"]
 
     for i, lead in enumerate(leads, 1):
@@ -197,12 +201,24 @@ def run_campaign(c):
             if not numero:
                 skipped += 1; patch_campaign(cid, {"skipped": skipped, "log": addlog(f"⏭️ {nome[:24]} — tel inválido")})
                 continue
+            if numero in seen:  # mesmo número em outro lead (ex: contador/franquia) — não manda 2x
+                skipped += 1
+                if not dry: update_lead(lead["id"], {"status": "contatado", "updated_at": now()})
+                patch_campaign(cid, {"skipped": skipped, "log": addlog(f"⏭️ {nome[:24]} — contato repetido")})
+                continue
+            seen.add(numero)
             if dry: ok, info = True, "dry"
             else:
                 ok, info = send_whatsapp(numero, spintax(WA_MESSAGE))
                 if ok: update_lead(lead["id"], {"status": "contatado", "updated_at": now()})
         else:
-            email = lead.get("email")
+            email = (lead.get("email") or "").strip().lower()
+            if email in seen:
+                skipped += 1
+                if not dry: update_lead(lead["id"], {"email_status": "enviado", "email_sent_at": now()})
+                patch_campaign(cid, {"skipped": skipped, "log": addlog(f"⏭️ {nome[:24]} — email repetido")})
+                continue
+            seen.add(email)
             assunto = random.choice(EMAIL_SUBJECTS).replace("{nome}", nome)
             if dry: ok, info = True, "dry"
             else:

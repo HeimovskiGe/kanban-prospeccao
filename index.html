@@ -99,6 +99,16 @@
   .dlog { background:#0a0c10; border:1px solid var(--border); border-radius:8px; padding:10px; height:260px;
     overflow-y:auto; font-family:ui-monospace,monospace; font-size:11px; line-height:1.6; color:#9fb0c0; white-space:pre-wrap; }
   .dwarn { font-size:11px; color:var(--muted); margin-top:8px; line-height:1.5; }
+  .citylist { max-height:220px; overflow-y:auto; border:1px solid var(--border); border-radius:8px;
+    background:var(--panel-2); padding:4px; }
+  .cityrow { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px; }
+  .cityrow:hover { background:#222835; }
+  .cityrow input { width:auto; margin:0; }
+  .cityrow .cnt { margin-left:auto; color:var(--muted); font-size:11px; }
+  .cityrow.on { background:#16302a; }
+  .citytotal { margin-top:8px; font-size:13px; font-weight:600; padding:8px 10px; border-radius:8px;
+    background:var(--panel-2); text-align:center; }
+  .citytotal.hit { background:#143; color:#6fe89a; }
 </style>
 </head>
 <body>
@@ -144,8 +154,10 @@
           <option value="whatsapp">📲 WhatsApp (Evolution)</option>
           <option value="email">📧 Email (Resend)</option>
         </select>
-        <label>Cidade</label>
-        <select id="dCity"></select>
+        <label>Cidades (marque até somar ~100 — pode passar)</label>
+        <input id="dCitySearch" placeholder="🔎 filtrar cidade..." oninput="dispRenderCities()" style="margin-bottom:6px" />
+        <div id="dCityList" class="citylist"></div>
+        <div id="dCityTotal" class="citytotal">0 contatos · 0 cidades · marque cidades acima</div>
         <label>Origem (status)</label>
         <select id="dStatus"><option value="novo">novo</option><option value="contatado">contatado</option></select>
         <label>Quantidade (máx neste disparo)</label>
@@ -394,31 +406,50 @@ function dChannelChange(){
   dispLoadCities();
 }
 
+let dCityCounts = {};
+let dSelected = new Set();
 function dispLoadCities(){
   const ch = document.getElementById('dChannel').value;
   const field = ch==='whatsapp' ? 'whatsapp' : 'email';
-  const counts = {};
-  let totalAll = 0;
+  dCityCounts = {};
   leads.forEach(l=>{
     if(!l.municipio || EXCLUDE.includes(l.municipio)) return;
     if(!l[field]) return;
-    counts[l.municipio]=(counts[l.municipio]||0)+1; totalAll++;
+    dCityCounts[l.municipio]=(dCityCounts[l.municipio]||0)+1;
   });
-  const sel = document.getElementById('dCity');
-  const cur = sel.value;
-  const cities = Object.keys(counts).sort();
-  sel.innerHTML = `<option value="">Todas as cidades — exceto Irati (${totalAll})</option>` +
-    cities.map(c=>`<option value="${esc(c)}">${esc(c)} (${counts[c]})</option>`).join('');
-  sel.value = cur;
+  // remove da seleção cidades que não existem mais no canal atual
+  dSelected.forEach(c=>{ if(!dCityCounts[c]) dSelected.delete(c); });
+  dispRenderCities();
+}
+function dispRenderCities(){
+  const q = (document.getElementById('dCitySearch').value||'').toLowerCase();
+  const cities = Object.keys(dCityCounts).sort();
+  const list = document.getElementById('dCityList');
+  const html = cities.filter(c=>c.toLowerCase().includes(q)).map(c=>{
+    const on = dSelected.has(c);
+    return `<label class="cityrow ${on?'on':''}"><input type="checkbox" ${on?'checked':''} onchange="dispToggleCity(this,'${c.replace(/'/g,"\\\\'")}')"><span>${esc(c)}</span><span class="cnt">${dCityCounts[c]}</span></label>`;
+  }).join('');
+  list.innerHTML = html || '<div class="dwarn" style="padding:10px">nenhuma cidade</div>';
+  dispUpdateTotal();
+}
+function dispToggleCity(el, c){ if(el.checked) dSelected.add(c); else dSelected.delete(c); dispRenderCities(); }
+function dispUpdateTotal(){
+  let tot=0; dSelected.forEach(c=>tot+=(dCityCounts[c]||0));
+  const el=document.getElementById('dCityTotal');
+  if(!dSelected.size){ el.textContent='0 contatos · marque cidades acima (sem Irati)'; el.className='citytotal'; }
+  else { el.textContent=`${tot} contatos · ${dSelected.size} cidade(s) selecionada(s)${tot>=100?' ✅':''}`; el.className='citytotal'+(tot>=100?' hit':''); }
+  if(dSelected.size) document.getElementById('dLimit').value = tot;  // envia todos das cidades marcadas (pode passar de 100)
 }
 
 async function dispStart(){
   const ch = document.getElementById('dChannel').value;
-  const city = document.getElementById('dCity').value;
+  const cities = Array.from(dSelected);
+  if(!cities.length && !confirm('Nenhuma cidade marcada — vai enviar pra TODAS as cidades (exceto Irati), respeitando o limite. Continuar?')) return;
   const cfg = {
     channel: ch,
-    city: city || null,
-    exclude_cities: city ? [] : EXCLUDE,
+    cities: cities,                       // cidades marcadas (in.())
+    city: null,
+    exclude_cities: cities.length ? [] : EXCLUDE,  // sem seleção = todas exceto Irati
     status_from: document.getElementById('dStatus').value,
     lim: +document.getElementById('dLimit').value,
     delay_min: +document.getElementById('dMin').value,
