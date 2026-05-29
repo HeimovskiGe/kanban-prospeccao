@@ -217,8 +217,9 @@ function buildCityFilter() {
   sel.value = cityF;
 }
 
-function waDigits(l){ let d=(l.whatsapp||l.telefone||'').replace(/\D/g,''); if(d&&!d.startsWith('55')&&d.length>=10)d='55'+d; return d.length>=12?d:null; }
-function isMobile(l){ const d=(l.whatsapp||l.telefone||'').replace(/\D/g,''); const lo=d.startsWith('55')?d.slice(4):d.slice(2); return lo.length===9||(lo.length>=8&&lo[0]==='9'); }
+// Usa SOMENTE o campo whatsapp (fixos tem whatsapp=null -> botao cinza, honesto)
+function waDigits(l){ let d=(l.whatsapp||'').replace(/\D/g,''); if(d&&!d.startsWith('55')&&d.length>=10)d='55'+d; return d.length>=12?d:null; }
+function isMobile(l){ const d=(l.whatsapp||'').replace(/\D/g,''); return d.length>=13; }
 
 function render() {
   const board = document.getElementById('board'); board.innerHTML='';
