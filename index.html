@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Kanban de Prospecção — Academias & CrossFit (Supabase)</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --panel-2:#1f232c; --border:#2a2f3a;
+    --text:#e6e9ef; --muted:#8b93a3; --accent:#25d366; --accent-2:#4f8cff;
+    --danger:#ff5c5c; --warn:#ffb648;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column; }
+  header { padding:12px 18px; background:var(--panel); border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  header h1 span { color:var(--accent); }
+  .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; align-items:center; }
+  button { background:var(--panel-2); color:var(--text); border:1px solid var(--border);
+    padding:8px 13px; border-radius:8px; cursor:pointer; font-size:13px; transition:.15s; }
+  button:hover { border-color:var(--accent-2); }
+  button.primary { background:var(--accent-2); border-color:var(--accent-2); color:#fff; }
+  input,select { background:var(--panel-2); border:1px solid var(--border); border-radius:8px;
+    padding:8px 11px; color:var(--text); font-size:13px; }
+  .search { width:200px; }
+  .stats { font-size:12px; color:var(--muted); }
+  #status-bar { font-size:12px; color:var(--warn); }
+
+  .board { flex:1; display:flex; gap:12px; padding:14px; overflow-x:auto; }
+  .column { background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    min-width:270px; width:270px; display:flex; flex-direction:column; max-height:100%; }
+  .column.dragover { border-color:var(--accent-2); background:#1b2330; }
+  .col-head { padding:11px 13px; font-weight:600; font-size:13px; display:flex;
+    justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); }
+  .col-head .dot { width:9px; height:9px; border-radius:50%; display:inline-block; margin-right:8px; }
+  .count { background:var(--panel-2); color:var(--muted); border-radius:20px; padding:2px 9px; font-size:11px; }
+  .cards { padding:9px; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:8px; }
+
+  .card { background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
+    padding:10px 11px; cursor:grab; font-size:13px; }
+  .card.dragging { opacity:.4; }
+  .card .name { font-weight:600; margin-bottom:4px; line-height:1.25; }
+  .card .meta { color:var(--muted); font-size:11px; line-height:1.5; }
+  .card .tags { margin-top:6px; display:flex; gap:5px; flex-wrap:wrap; }
+  .tag { font-size:10px; padding:2px 7px; border-radius:5px; background:#2a3140; color:var(--muted); }
+  .tag.nova { background:#1f3a26; color:#6fe89a; }
+  .tag.wa { background:#143; color:#6fe89a; }
+  .card .actions { margin-top:8px; display:flex; gap:6px; }
+  .card .actions a,.card .actions button { flex:1; text-align:center; text-decoration:none;
+    font-size:11px; padding:6px 0; border-radius:6px; }
+  .wa { background:var(--accent); color:#04210f; font-weight:600; }
+  .wa.off { background:#333; color:#777; pointer-events:none; }
+  .empty { color:var(--muted); font-size:12px; text-align:center; padding:20px; opacity:.6; }
+  .loader { position:fixed; inset:0; background:rgba(15,17,21,.9); display:flex; align-items:center;
+    justify-content:center; z-index:99; font-size:15px; color:var(--muted); }
+  .loader.hide { display:none; }
+</style>
+</head>
+<body>
+<div class="loader" id="loader">⏳ Carregando leads do Supabase...</div>
+<header>
+  <h1>🎯 Prospecção <span>· Academias / CrossFit / Personal</span></h1>
+  <input class="search" id="search" placeholder="🔎 Buscar nome / CNPJ..." />
+  <select id="cityFilter"><option value="">Todas as cidades</option></select>
+  <select id="waFilter">
+    <option value="">Todos</option>
+    <option value="1">Só com WhatsApp</option>
+  </select>
+  <div class="toolbar">
+    <span class="stats" id="stats">0 leads</span>
+    <span id="status-bar"></span>
+    <button onclick="loadLeads()">🔄 Recarregar</button>
+  </div>
+</header>
+<div class="board" id="board"></div>
+
+<script>
+const SUPA_URL = 'https://amsdxyoeeqszlnbozixo.supabase.co';
+const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFtc2R4eW9lZXFzemxuYm96aXhvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAwMjczMjksImV4cCI6MjA5NTYwMzMyOX0.aQevEeRViJtqjD33Twgei5G2Maqg5wbhC7t8lWy3Gfg';
+const H = { 'apikey': ANON, 'Authorization': 'Bearer ' + ANON, 'Content-Type': 'application/json' };
+
+const COLUMNS = [
+  { id:'novo', title:'Novo Lead', color:'#4f8cff' },
+  { id:'contatado', title:'Contatado', color:'#ffb648' },
+  { id:'respondeu', title:'Respondeu', color:'#b388ff' },
+  { id:'negociando', title:'Negociando', color:'#25d366' },
+  { id:'fechado', title:'Fechado ✅', color:'#2ecc71' },
+  { id:'perdido', title:'Perdido', color:'#ff5c5c' },
+];
+const WA_MSG = encodeURIComponent('Olá! Tudo bem? Falo da [SUA EMPRESA] — trabalhamos com IA e automação para academias e boxes. Posso te mostrar como atrair mais alunos com pouco esforço?');
+
+let leads = [];
+let filter = '', cityF = '', waF = '';
+
+async function loadLeads() {
+  setStatus('carregando...');
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/leads?select=*&order=municipio.asc&limit=10000`, { headers: H });
+    if (!res.ok) throw new Error('HTTP ' + res.status + ' — ' + await res.text());
+    leads = await res.json();
+    buildCityFilter();
+    render();
+    setStatus('');
+    document.getElementById('loader').classList.add('hide');
+  } catch (e) {
+    document.getElementById('loader').textContent = '❌ Erro: ' + e.message;
+    setStatus('erro ao carregar');
+  }
+}
+function setStatus(t) { document.getElementById('status-bar').textContent = t; }
+
+function buildCityFilter() {
+  const cities = [...new Set(leads.map(l => l.municipio).filter(Boolean))].sort();
+  const sel = document.getElementById('cityFilter');
+  sel.innerHTML = '<option value="">Todas as cidades (' + leads.length + ')</option>' +
+    cities.map(c => {
+      const n = leads.filter(l => l.municipio === c).length;
+      return `<option value="${esc(c)}">${esc(c)} (${n})</option>`;
+    }).join('');
+  sel.value = cityF;
+}
+
+function waDigits(l) {
+  let d = (l.whatsapp || l.telefone || '').replace(/\D/g,'');
+  if (d && !d.startsWith('55') && d.length >= 10) d = '55' + d;
+  return d.length >= 12 ? d : null;
+}
+function isMobile(l) {
+  const d = (l.whatsapp || l.telefone || '').replace(/\D/g,'');
+  const local = d.startsWith('55') ? d.slice(4) : d.slice(2);
+  return local.length === 9 || (local.length >= 8 && local[0] === '9');
+}
+
+function render() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  const f = filter.toLowerCase();
+  let shown = 0;
+  COLUMNS.forEach(col => {
+    let items = leads.filter(l => l.status === col.id);
+    items = items.filter(l =>
+      (!f || (l.nome_fantasia||'').toLowerCase().includes(f) || (l.cnpj||'').includes(f)) &&
+      (!cityF || l.municipio === cityF) &&
+      (!waF || waDigits(l)));
+    shown += items.length;
+    const colEl = document.createElement('div');
+    colEl.className = 'column'; colEl.dataset.col = col.id;
+    colEl.innerHTML = `<div class="col-head"><span><span class="dot" style="background:${col.color}"></span>${col.title}</span><span class="count">${items.length}</span></div><div class="cards"></div>`;
+    const cardsEl = colEl.querySelector('.cards');
+    if (!items.length) cardsEl.innerHTML = '<div class="empty">vazio</div>';
+    items.slice(0, 400).forEach(l => cardsEl.appendChild(cardEl(l)));
+    if (items.length > 400) cardsEl.insertAdjacentHTML('beforeend', `<div class="empty">+${items.length-400} (use filtros)</div>`);
+    colEl.addEventListener('dragover', e => { e.preventDefault(); colEl.classList.add('dragover'); });
+    colEl.addEventListener('dragleave', () => colEl.classList.remove('dragover'));
+    colEl.addEventListener('drop', e => {
+      e.preventDefault(); colEl.classList.remove('dragover');
+      const id = e.dataTransfer.getData('id');
+      moveLead(id, col.id);
+    });
+    board.appendChild(colEl);
+  });
+  document.getElementById('stats').textContent = `${shown} / ${leads.length} leads`;
+}
+
+function cardEl(l) {
+  const el = document.createElement('div');
+  el.className = 'card'; el.draggable = true;
+  const wa = waDigits(l);
+  const link = wa ? `https://wa.me/${wa}?text=${WA_MSG}` : null;
+  const isNew = l.data_abertura && isRecent(l.data_abertura);
+  el.innerHTML = `
+    <div class="name">${esc(l.nome_fantasia || l.razao_social || 'Sem nome')}</div>
+    <div class="meta">
+      ${l.municipio ? '📍 '+esc(l.municipio)+(l.uf?'/'+esc(l.uf):'')+'<br>' : ''}
+      ${l.telefone ? '📞 '+esc(l.telefone)+'<br>' : '<span style="color:#ff5c5c">sem telefone</span><br>'}
+      ${l.cnpj ? '🏢 '+esc(l.cnpj) : ''}
+    </div>
+    <div class="tags">
+      ${wa && isMobile(l) ? '<span class="tag wa">📱 WhatsApp</span>' : ''}
+      ${isNew ? '<span class="tag nova">🆕 recente</span>' : ''}
+      ${l.email ? '<span class="tag">✉️ email</span>' : ''}
+    </div>
+    <div class="actions">
+      <a class="wa ${link?'':'off'}" href="${link||'#'}" target="_blank">💬 WhatsApp</a>
+    </div>`;
+  el.addEventListener('dragstart', e => { e.dataTransfer.setData('id', l.id); el.classList.add('dragging'); });
+  el.addEventListener('dragend', () => el.classList.remove('dragging'));
+  return el;
+}
+
+async function moveLead(id, status) {
+  const lead = leads.find(x => x.id === id); if (!lead) return;
+  const prev = lead.status; lead.status = status; render();
+  try {
+    const res = await fetch(`${SUPA_URL}/rest/v1/leads?id=eq.${id}`, {
+      method:'PATCH', headers:{...H, 'Prefer':'return=minimal'},
+      body: JSON.stringify({ status, updated_at: new Date().toISOString() })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    setStatus('✓ salvo'); setTimeout(()=>setStatus(''), 1200);
+  } catch(e) { lead.status = prev; render(); setStatus('❌ falha ao salvar'); }
+}
+
+function isRecent(d) { const dt=new Date(d); if(isNaN(dt))return false;
+  return (Date.now()-dt.getTime())/(1000*60*60*24*30) <= 12; }
+function esc(s){ return (s+'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+document.getElementById('search').addEventListener('input', e=>{ filter=e.target.value; render(); });
+document.getElementById('cityFilter').addEventListener('change', e=>{ cityF=e.target.value; render(); });
+document.getElementById('waFilter').addEventListener('change', e=>{ waF=e.target.value; render(); });
+
+loadLeads();
+</script>
+</body>
+</html>
