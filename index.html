@@ -110,7 +110,21 @@ const COLUMNS = [
   { id:'fechado', title:'Fechado ✅', color:'#2ecc71' },
   { id:'perdido', title:'Perdido', color:'#ff5c5c' },
 ];
-const WA_MSG = encodeURIComponent('Olá! Tudo bem? Falo da [SUA EMPRESA] — trabalhamos com IA e automação para academias e boxes. Posso te mostrar como atrair mais alunos com pouco esforço?');
+// Mensagem PAM-GEH personalizada por lead (voz "diagnóstico", anti-hype)
+function buildWaMsg(l) {
+  const nome = (l.nome_fantasia || l.razao_social || 'sua academia').trim();
+  const cidade = (l.municipio || '').trim();
+  const ondeVi = cidade ? ` aí em ${cidade}` : '';
+  const msg =
+`Oi! Aqui é a Pamela, do PAM-GEH 👋 Vi a ${nome}${ondeVi}.
+
+Falo direto: a maioria das academias e estúdios perde aluno não por falta de contato, e sim por demora no WhatsApp — a pessoa pergunta valor, ninguém responde na hora, ela some.
+
+A gente não vende "IA que fecha sozinha" (esse mercado tá cheio de promessa furada). A gente faz o diagnóstico do processo de vocês primeiro e só depois liga uma IA que filtra e responde na hora — pra sobrar pra vocês só o fechamento.
+
+Vale 10 min pra eu te mostrar como ficaria na ${nome}? Hoje ou amanhã?`;
+  return encodeURIComponent(msg);
+}
 
 let leads = [], filter = '', cityF = '', waF = '';
 let session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
@@ -215,7 +229,7 @@ function render() {
 
 function cardEl(l) {
   const el=document.createElement('div'); el.className='card'; el.draggable=true;
-  const wa=waDigits(l); const link=wa?`https://wa.me/${wa}?text=${WA_MSG}`:null;
+  const wa=waDigits(l); const link=wa?`https://wa.me/${wa}?text=${buildWaMsg(l)}`:null;
   const isNew=l.data_abertura && isRecent(l.data_abertura);
   el.innerHTML = `
     <div class="name">${esc(l.nome_fantasia||l.razao_social||'Sem nome')}</div>
